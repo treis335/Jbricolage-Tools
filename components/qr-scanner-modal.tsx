@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useEffect, useRef, useState } from "react"
@@ -26,6 +25,8 @@ export function QRScannerModal({ open, onClose, onUserScanned, users }: QRScanne
   const [isInitializing, setIsInitializing] = useState(false)
   const [cameraError, setCameraError] = useState(false)
   const [showUserList, setShowUserList] = useState(false)
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
+  const [selectedCamera, setSelectedCamera] = useState<string | null>(null)
   const scannerRef = useRef<Html5QrcodeScanner | null>(null)
   const hasScannedRef = useRef(false)
 
@@ -44,8 +45,9 @@ export function QRScannerModal({ open, onClose, onUserScanned, users }: QRScanne
       setCameraError(false)
       setManualCode("")
       setShowUserList(false)
+      setAvailableCameras([])
+      setSelectedCamera(null)
       hasScannedRef.current = false
-      return
     }
   }, [open])
 
@@ -55,7 +57,6 @@ export function QRScannerModal({ open, onClose, onUserScanned, users }: QRScanne
 
     console.log("[v0] QR Code scanned:", decodedText)
 
-    // Try to parse as JSON first
     let qrCode = decodedText
     try {
       const parsed = JSON.parse(decodedText)
@@ -73,7 +74,6 @@ export function QRScannerModal({ open, onClose, onUserScanned, users }: QRScanne
       setScannedUser(user)
       setQuickScanMode(true)
 
-      // Cleanup scanner
       if (scannerRef.current) {
         scannerRef.current.clear().catch(console.error)
         scannerRef.current = null
@@ -92,51 +92,71 @@ export function QRScannerModal({ open, onClose, onUserScanned, users }: QRScanne
     setCameraError(false)
 
     try {
-      console.log("[v0] Requesting camera permissions...")
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      })
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const videoDevices = devices.filter((device) => device.kind === "videoinput")
+      setAvailableCameras(videoDevices)
+
+      if (videoDevices.length === 0) {
+        throw new Error("Nenhuma câmera encontrada no dispositivo.")
+      }
+
+      let stream
+      const cameraConstraints = selectedCamera
+        ? { deviceId: { exact: selectedCamera } }
+        : [
+            { facingMode: "environment" },
+            { facingMode: "user" },
+            {},
+          ]
+
+      for (const constraint of Array.isArray(cameraConstraints) ? cameraConstraints : [cameraConstraints]) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: constraint,
+          })
+          break
+        } catch (err) {
+          console.warn("[v0] Falha ao tentar constraint:", constraint, err)
+        }
+      }
+
+      if (!stream) {
+        throw new Error("Nenhuma câmera pôde ser acessada.")
+      }
 
       stream.getTracks().forEach((track) => track.stop())
 
-      console.log("[v0] Camera permission granted, initializing scanner...")
+      scannerRef.current = new Html5QrcodeScanner(
+        "qr-reader",
+        {
+          fps: 10,
+          qrbox: { width: 300, height: 300 },
+          aspectRatio: 1.0,
+          videoConstraints: selectedCamera ? { deviceId: { exact: selectedCamera } } : { facingMode: "environment" },
+        },
+        false
+      )
 
-      setTimeout(() => {
-        try {
-          scannerRef.current = new Html5QrcodeScanner(
-            "qr-reader",
-            {
-              fps: 10,
-              qrbox: { width: 300, height: 300 },
-              aspectRatio: 1.0,
-              videoConstraints: {
-                facingMode: "environment",
-              },
-            },
-            false,
-          )
-
-          scannerRef.current.render(handleScanSuccess, (error) => {
-            if (!error.includes("NotFoundException")) {
-              console.warn("[v0] QR Scan error:", error)
-            }
-          })
-
-          setIsScanning(true)
-          setIsInitializing(false)
-          toast.success("Câmera ativada! Aponte para o QR code.")
-        } catch (error) {
-          console.error("[v0] Scanner initialization error:", error)
-          setCameraError(true)
-          setIsInitializing(false)
-          toast.error("Erro ao inicializar scanner. Use entrada manual.")
+      scannerRef.current.render(handleScanSuccess, (error) => {
+        if (!error.includes("NotFoundException")) {
+          console.warn("[v0] QR Scan error:", error)
         }
-      }, 100)
+      })
+
+      setIsScanning(true)
+      setIsInitializing(false)
+      toast.success("Câmera ativada! Aponte para o QR code.")
     } catch (error) {
-      console.error("[v0] Camera permission error:", error)
+      console.error("[v0] Camera error:", error)
       setCameraError(true)
       setIsInitializing(false)
-      toast.error("Permita acesso à câmera nas configurações do navegador!", {
+      let errorMessage = "Erro ao acessar a câmera."
+      if (error.name === "NotAllowedError") {
+        errorMessage = "Permissão para câmera negada. Permita o acesso nas configurações do navegador."
+      } else if (error.name === "NotFoundError") {
+        errorMessage = "Nenhuma câmera encontrada no dispositivo."
+      }
+      toast.error(errorMessage, {
         description: "Para produção, use HTTPS para acesso à câmera.",
         duration: 5000,
       })
@@ -161,9 +181,8 @@ export function QRScannerModal({ open, onClose, onUserScanned, users }: QRScanne
   }
 
   const handleSelectUser = (userId: string) => {
-    // Formata o user.id com o prefixo esperado por findUserByQRCode
     const formattedUserId = `USER-${String(userId).padStart(3, "0")}`
-    handleScanSuccess(formattedUserId) // Reutiliza a lógica existente
+    handleScanSuccess(formattedUserId)
     setShowUserList(false)
   }
 
@@ -200,6 +219,29 @@ export function QRScannerModal({ open, onClose, onUserScanned, users }: QRScanne
           {isScanning && (
             <div className="space-y-4">
               <div id="qr-reader" className="w-full rounded-lg overflow-hidden border-4 border-green-500 shadow-lg" />
+              {availableCameras.length > 1 && (
+                <div className="space-y-2">
+                  <Label htmlFor="camera-select" className="text-base">
+                    Selecionar Câmera
+                  </Label>
+                  <select
+                    id="camera-select"
+                    value={selectedCamera || ""}
+                    onChange={(e) => {
+                      setSelectedCamera(e.target.value)
+                      stopScanner()
+                      startScanner()
+                    }}
+                    className="w-full h-12 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    {availableCameras.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label || `Câmera ${device.deviceId}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <Button onClick={stopScanner} variant="outline" size="lg" className="w-full h-12 bg-transparent">
                 <X className="mr-2 h-5 w-5" />
                 Parar Scanner
@@ -248,7 +290,6 @@ export function QRScannerModal({ open, onClose, onUserScanned, users }: QRScanne
                 Processar Código
               </Button>
 
-              {/* Botão e Lista de Usuários dentro do modal */}
               <div className="space-y-2">
                 <Button
                   onClick={() => setShowUserList(!showUserList)}
