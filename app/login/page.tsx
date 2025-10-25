@@ -12,6 +12,7 @@ import { toast } from "sonner"
 import { motion } from "framer-motion"
 
 export default function LoginPage() {
+  const [showFullLogin, setShowFullLogin] = useState(false)
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -19,11 +20,23 @@ export default function LoginPage() {
   const login = useStore((state) => state.login)
   const router = useRouter()
 
+  const handleSimpleMode = async () => {
+    setIsLoading(true)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const success = login("armazem", "armazem123")
+    if (success) {
+      toast.success("Bem-vindo ao Modo Simples!", { duration: 3000 })
+      router.push("/dashboard")
+    } else {
+      toast.error("Erro no modo simples")
+    }
+    setIsLoading(false)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
 
-    // Simulate loading
     await new Promise((resolve) => setTimeout(resolve, 500))
 
     const success = login(username, password)
@@ -39,7 +52,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -52,68 +65,97 @@ export default function LoginPage() {
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.1 }}
-              className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-md" // Fundo branco com sombra sutil para destaque
+              className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-md"
             >
               <img
                 src="/logologin.png"
                 alt="Logo da Firma"
-                className="h-18 w-18 object-contain" // Tamanho ajustado para caber perfeitamente no container (64px); object-contain preserva proporção sem clip
+                className="h-12 w-12 object-contain"
               />
             </motion.div>
             <CardTitle className="text-2xl font-bold">Controle de Ferramentas</CardTitle>
             <CardDescription>Entre com suas credenciais para acessar o sistema</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">Usuário</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="admin ou armazem"
-                  required
-                  className="min-h-12 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+            {!showFullLogin ? (
+              <div className="space-y-4">
+                <Button
+                  onClick={handleSimpleMode}
+                  className="w-full min-h-14 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 ripple bg-green-600 hover:bg-green-700 text-white text-lg font-semibold"
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Entrando..." : "Modo Simples (Armazém)"}
+                </Button>
+                <p className="text-xs text-center text-muted-foreground">
+                  <button
+                    onClick={() => setShowFullLogin(true)}
+                    className="underline hover:text-primary transition-colors"
+                  >
+                    Outros modos (Admin/Armazém)
+                  </button>
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="min-h-12 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <Button
-                type="submit"
-                className="w-full min-h-12 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 ripple"
-                disabled={isLoading}
-              >
-                {isLoading ? "Entrando..." : "Entrar"}
-              </Button>
-            </form>
-
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              className="mt-6 space-y-2 rounded-xl bg-muted/50 p-4 text-xs backdrop-blur"
-            >
-              <p className="font-semibold">Credenciais de teste:</p>
-              <p>
-                Admin: <code className="rounded bg-background px-2 py-1">admin</code> /{" "}
-                <code className="rounded bg-background px-2 py-1">admin123</code>
-              </p>
-              <p>
-                Armazém: <code className="rounded bg-background px-2 py-1">armazem</code> /{" "}
-                <code className="rounded bg-background px-2 py-1">armazem123</code>
-              </p>
-            </motion.div>
+            ) : (
+              <>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Usuário</Label>
+                    <Input
+                      id="username"
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="admin ou armazem"
+                      required
+                      className="min-h-12 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Senha</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      className="min-h-12 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full min-h-12 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 ripple"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? "Entrando..." : "Entrar"}
+                  </Button>
+                </form>
+                <p className="text-xs text-center text-muted-foreground">
+                  <button
+                    onClick={() => setShowFullLogin(false)}
+                    className="underline hover:text-primary transition-colors"
+                  >
+                    Modo Simples
+                  </button>
+                </p>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                  className="mt-6 space-y-2 rounded-xl bg-muted/50 p-4 text-xs backdrop-blur"
+                >
+                  <p className="font-semibold">Credenciais de teste:</p>
+                  <p>
+                    Admin: <code className="rounded bg-background px-2 py-1">admin</code> /{" "}
+                    <code className="rounded bg-background px-2 py-1">admin123</code>
+                  </p>
+                  <p>
+                    Armazém: <code className="rounded bg-background px-2 py-1">armazem</code> /{" "}
+                    <code className="rounded bg-background px-2 py-1">armazem123</code>
+                  </p>
+                </motion.div>
+              </>
+            )}
           </CardContent>
         </Card>
       </motion.div>
